@@ -1,0 +1,6 @@
+# ondevice_vlm.py — Apple Silicon only; pulls mlx, mlx-lm, mlx-metal
+mlx-vlm==0.6.8
+# api_vlm.py — every provider in PROVIDERS speaks the OpenAI dialect
+openai==2.53.0
+# both
+pillow==12.3.0

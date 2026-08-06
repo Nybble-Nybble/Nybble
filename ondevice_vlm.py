@@ -1,8 +1,11 @@
-"""Caption a stream of egocentric frames with Qwen3-VL on MLX.
+"""On-device captioning: Qwen3-VL on MLX, running locally on Apple Silicon.
 
 Frames may be PIL Images, file paths, URLs, or data URIs — mlx_vlm.load_image
 takes all of them, so the (not-yet-written) glasses stream can hand us whatever
 it produces.
+
+api_vlm.py is the hosted-API counterpart with the same caption_stream(frames)
+signature, so run_captions.py can drive either. Both share prompt.py.
 """
 
 from mlx_vlm import generate, load
