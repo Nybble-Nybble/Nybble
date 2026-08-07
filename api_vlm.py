@@ -12,6 +12,7 @@ single PROVIDERS entry; nothing else in this file changes.
 import base64
 import io
 import os
+from pathlib import Path
 
 from openai import OpenAI
 from PIL import Image, ImageOps
@@ -30,13 +31,37 @@ PROVIDERS = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "key_env": "GEMINI_API_KEY",
         "model": "gemini-3.6-flash",
+        # ponytail: 3.6-flash always thinks, and the compat layer bills those thinking
+        # tokens against max_tokens while leaving them OUT of usage.completion_tokens.
+        # So a budget sized for the caption alone starves it: at max_tokens=600 we got
+        # finish_reason="length" after 15 visible words. "none" is rejected outright —
+        # "low" is the floor for this model. Anything under ~1500 will truncate.
+        "extra": {"reasoning_effort": "low"},
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "key_env": "OPENROUTER_API_KEY",
         "model": "qwen/qwen3-vl-30b-a3b-instruct",
+        "extra": {},
     },
 }
+
+
+def _key(name):
+    """Read a key from the environment, falling back to a gitignored .env file.
+
+    ponytail: eight lines instead of python-dotenv. No export/quote/interpolation
+    syntax — one NAME=value per line. Swap in the real thing if you ever need more.
+    """
+    if os.environ.get(name):
+        return os.environ[name]
+    env_file = Path(__file__).parent / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            k, sep, v = line.partition("=")
+            if sep and k.strip() == name:
+                return v.strip()
+    return None
 
 
 def _data_url(frame):
@@ -49,8 +74,12 @@ def _data_url(frame):
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def caption_stream(frames, provider="gemini", model=None, max_tokens=600):
+def caption_stream(frames, provider="gemini", model=None, max_tokens=2000):
     """Yield one caption per frame. One image per call, matching ondevice_vlm.
+
+    max_tokens is far above ondevice_vlm's because on thinking models it has to
+    cover the reasoning pass too — see the gemini entry in PROVIDERS. It stays a
+    backstop, not a length control; the prompt's word cap does that.
 
     ponytail: no retry/concurrency layer. The SDK already retries 429s and 5xxs,
     and serial calls are fine for iterating on a few hundred frames. When you
@@ -60,9 +89,12 @@ def caption_stream(frames, provider="gemini", model=None, max_tokens=600):
     if provider not in PROVIDERS:
         raise ValueError(f"unknown provider {provider!r}; have {list(PROVIDERS)}")
     cfg = PROVIDERS[provider]
-    key = os.environ.get(cfg["key_env"])
+    key = _key(cfg["key_env"])
     if not key:
-        raise RuntimeError(f"{cfg['key_env']} is not set (needed for {provider})")
+        raise RuntimeError(
+            f"{cfg['key_env']} not found — export it, or put "
+            f"{cfg['key_env']}=... in .env (gitignored)"
+        )
     client = OpenAI(base_url=cfg["base_url"], api_key=key)
 
     # Validation above runs eagerly; only the request loop is deferred, so a bad
@@ -77,7 +109,13 @@ def caption_stream(frames, provider="gemini", model=None, max_tokens=600):
                     {"type": "image_url", "image_url": {"url": _data_url(frame)}},
                     {"type": "text", "text": CAPTION_PROMPT},
                 ]}],
+                **cfg.get("extra", {}),
             )
+            if resp.choices[0].finish_reason == "length":
+                raise RuntimeError(
+                    f"caption truncated at max_tokens={max_tokens} — on a thinking "
+                    f"model the reasoning pass shares this budget; raise it"
+                )
             yield (resp.choices[0].message.content or "").strip()
 
     return stream()
