@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Optional Apple Silicon baseline. PowerNap does not import this backend.
+mlx-vlm==0.6.8

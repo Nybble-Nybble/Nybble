@@ -1,0 +1,481 @@
+<title>Three Macs and the Speed of Light</title>
+<style>
+  :root {
+    --paper:      #F2F4F5;
+    --paper-sunk: #E7EBEC;
+    --ink:        #16202B;
+    --ink-muted:  #5C6B76;
+    --rule:       #D2D9DD;
+    --accent:     #11655C;
+    --alarm:      #A63A20;
+
+    --display: "Superclarendon", "Bookman Old Style", Rockwell, Georgia, serif;
+    --body:    "Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --data:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --measure: 66ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #131A20;
+      --paper-sunk: #1B242C;
+      --ink:        #E4EAED;
+      --ink-muted:  #93A3AE;
+      --rule:       #2E3A44;
+      --accent:     #5FBFB0;
+      --alarm:      #E28368;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #131A20;
+    --paper-sunk: #1B242C;
+    --ink:        #E4EAED;
+    --ink-muted:  #93A3AE;
+    --rule:       #2E3A44;
+    --accent:     #5FBFB0;
+    --alarm:      #E28368;
+  }
+  :root[data-theme="light"] {
+    --paper:      #F2F4F5;
+    --paper-sunk: #E7EBEC;
+    --ink:        #16202B;
+    --ink-muted:  #5C6B76;
+    --rule:       #D2D9DD;
+    --accent:     #11655C;
+    --alarm:      #A63A20;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 19px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 5rem 1.5rem 7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.4rem;
+  }
+
+  /* ---- masthead ---- */
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+  .eyebrow {
+    font-family: var(--data);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(2.3rem, 7vw, 3.4rem);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    font-weight: 700;
+  }
+  .standfirst {
+    font-size: 1.16rem;
+    line-height: 1.5;
+    color: var(--ink-muted);
+    max-width: 32rem;
+    text-wrap: pretty;
+  }
+  .byline {
+    font-family: var(--data);
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+    border-top: 1px solid var(--rule);
+    padding-top: 0.9rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem;
+  }
+
+  /* ---- steps ---- */
+  .step {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    max-width: var(--measure);
+  }
+  .step > h2 {
+    font-family: var(--display);
+    font-size: 1.42rem;
+    line-height: 1.22;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    font-weight: 700;
+    position: relative;
+  }
+  /* Numbers hang in the margin: this is a derivation, each step leans on the last. */
+  .step > h2::before {
+    content: attr(data-n);
+    font-family: var(--data);
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--accent);
+    position: absolute;
+    left: -3.1rem;
+    top: 0.42rem;
+  }
+  /* screen-only: a Letter page is ~51rem wide, so an unscoped max-width query
+     would fire during printing and drop the numbers inline. */
+  @media screen and (max-width: 52rem) {
+    .step > h2::before { position: static; display: block; margin-bottom: 0.3rem; }
+  }
+  p { text-wrap: pretty; }
+  .num { font-family: var(--data); font-size: 0.94em; font-variant-numeric: tabular-nums; }
+  em { font-style: italic; }
+
+  /* ---- therefore ---- */
+  .therefore {
+    border-left: 2px solid var(--accent);
+    padding: 0.1rem 0 0.1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .therefore .label {
+    font-family: var(--data);
+    font-size: 0.66rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .therefore p { font-size: 1.02rem; line-height: 1.45; }
+
+  /* ---- figures ---- */
+  figure {
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    padding: 1.5rem 1.4rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  figcaption {
+    font-family: var(--data);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--ink-muted);
+    border-top: 1px solid var(--rule);
+    padding-top: 0.8rem;
+  }
+
+  /* Log scale. Pin labels live above the rule, decade labels below, so the two
+     sets of numbers never collide. */
+  .scale { display: flex; flex-direction: column; gap: 0.75rem; padding-top: 3.6rem; }
+  .track { position: relative; height: 1px; background: var(--rule); }
+  .track::after {
+    content: "";
+    position: absolute; left: 0; right: 0; top: 0; height: 5px;
+    background: repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 25%);
+    opacity: 0.55;
+  }
+  .pin {
+    position: absolute; bottom: 0; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 0.22rem;
+  }
+  .pin i { display: block; width: 2px; height: 11px; background: var(--accent); }
+  .pin b {
+    font-family: var(--data); font-size: 0.72rem; font-weight: 400;
+    white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .pin s { font-family: var(--body); font-size: 0.78rem; text-decoration: none; color: var(--ink-muted); white-space: nowrap; }
+  .pin.far i { background: var(--alarm); }
+  .pin.far b { color: var(--alarm); }
+  .decades {
+    display: flex; justify-content: space-between;
+    font-family: var(--data); font-size: 0.62rem; color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* table */
+  .tw { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--data); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  th {
+    text-align: left; font-weight: 400; font-size: 0.66rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted);
+    padding: 0 0.9rem 0.6rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap;
+  }
+  td { padding: 0.62rem 0.9rem 0.62rem 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+  tr:last-child td { border-bottom: none; }
+  th.n, td.n { text-align: right; padding-right: 0; }
+  tr.bad td { color: var(--alarm); }
+
+  .kicker {
+    font-family: var(--display);
+    font-size: 1.5rem;
+    line-height: 1.32;
+    text-wrap: balance;
+    max-width: 34rem;
+    border-top: 1px solid var(--rule);
+    padding-top: 2rem;
+  }
+
+  @media print {
+    :root {
+      --paper: #FFFFFF; --paper-sunk: #F4F6F6; --ink: #16202B;
+      --ink-muted: #5C6B76; --rule: #CFD6DA; --accent: #11655C; --alarm: #A63A20;
+    }
+    /* Narrow left page margin plus sheet padding: the reclaimed space is where
+       the hanging section numbers live. Without it they clip off the sheet. */
+    @page { size: letter; margin: 18mm 16mm 18mm 9mm; }
+    body { font-size: 11.2pt; line-height: 1.5; background: #fff; }
+    .sheet { max-width: none; padding: 0 0 0 2.9rem; gap: 1.3rem; }
+    h1 { font-size: 27pt; }
+    /* Tightened so the closing line lands with section 11 instead of being
+       stranded alone on a near-empty final page. */
+    .kicker { font-size: 13pt; line-height: 1.28; padding-top: 1.2rem; }
+    .step > h2 { font-size: 13.2pt; break-after: avoid; }
+    .step > h2::before { position: absolute; left: -2.6rem; top: 0.34rem; display: inline; margin: 0; }
+    /* Let prose reflow across pages; only keep indivisible blocks whole.
+       Holding whole steps together left ~40% of a page empty. */
+    figure, .therefore, .kicker, .masthead { break-inside: avoid; }
+    p { orphans: 2; widows: 2; }
+    figcaption, .byline { font-size: 8pt; }
+  }
+</style>
+
+<article class="sheet">
+
+  <header class="masthead">
+    <div class="eyebrow">Nybble / infrastructure note</div>
+    <h1>Three Macs and the Speed of Light</h1>
+    <p class="standfirst">
+      Working out, from the ground up, why two of your machines can share a brain
+      and the third one never can.
+    </p>
+    <div class="byline">
+      <span>Measured on Mac mini M4, 16 GB</span>
+      <span>macOS 26.5.2</span>
+      <span>4 August 2026</span>
+    </div>
+  </header>
+
+  <section class="step">
+    <h2 data-n="01">A model is a pile of numbers.</h2>
+    <p>
+      Qwen3-32B is thirty-two billion numbers. Each one is squeezed into four bits, which is
+      half a byte, so the whole model is about <span class="num">16 GB</span>. That is all it is.
+      Not code, not a program that thinks. A very large file full of numbers that were
+      settled during training and never change again.
+    </p>
+  </section>
+
+  <section class="step">
+    <h2 data-n="02">Every word it writes reads all of them.</h2>
+    <p>
+      To produce one token, roughly one word, the model takes your text and multiplies it
+      through every one of those numbers, in order, once each. Then to produce the
+      <em>next</em> word, it does the entire thing over again. All thirty-two billion, every time.
+    </p>
+    <div class="therefore">
+      <div class="label">Therefore</div>
+      <p>Writing a sentence means hauling <span class="num">16 GB</span> out of memory and into the chip, once per word.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2 data-n="03">So speed is a plumbing problem, not a maths problem.</h2>
+    <p>
+      Your GPU can do trillions of calculations per second. It can only <em>read</em> about
+      <span class="num">120 GB</span> per second. So the arithmetic finishes almost instantly
+      and then sits there waiting for the next batch of numbers to arrive. The chip is not
+      thinking hard. It is queuing.
+    </p>
+    <p>
+      Which gives a prediction you can check: speed should be roughly memory bandwidth divided
+      by model size. I ran a small model on your mini. It occupies
+      <span class="num">1.035 GB</span>, so <span class="num">120 ÷ 1.035 = 116</span> words
+      per second in the ideal case. It actually managed <span class="num">72.7</span>. The gap
+      is normal, since nothing ever hits its rated bandwidth, but the shape of the answer holds.
+    </p>
+    <div class="therefore">
+      <div class="label">Therefore</div>
+      <p>A more compressed model is not merely lighter. It is proportionally faster, because there are fewer bytes to drag.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2 data-n="04">But the wall you actually hit is whether it fits at all.</h2>
+    <p>
+      Your mini has <span class="num">16 GB</span> of memory, and macOS only lets the graphics
+      side claim about <span class="num">10.6 GB</span> of it. A model that needs sixteen does
+      not load slowly. It does not load.
+    </p>
+    <p>
+      This is the real reason anyone connects Macs together. Not to go faster. To have somewhere
+      to put the thing.
+    </p>
+  </section>
+
+  <section class="step">
+    <h2 data-n="05">There are two ways to cut a model in half.</h2>
+    <p>
+      Picture the model as sixty-four pancakes in a stack. Each pancake is one layer, and they
+      are all the same shape.
+    </p>
+    <p>
+      You can cut <em>horizontally</em>: machine A keeps the bottom thirty-two pancakes, machine B
+      keeps the top thirty-two. Work climbs up through A, gets handed over, climbs up through B.
+    </p>
+    <p>
+      Or you can cut <em>vertically</em>: both machines keep all sixty-four pancakes, but each holds
+      only the left or right half of every one. They work side by side, layer by layer.
+    </p>
+    <p>
+      These sound like the same idea wearing different hats. The rest of this note is about how
+      violently they differ.
+    </p>
+  </section>
+
+  <section class="step">
+    <h2 data-n="06">Cutting vertically makes the machines wait for each other.</h2>
+    <p>
+      If each machine holds half of a layer, then when each finishes its half, each is holding
+      half of an answer. Neither one can take a step forward. They have to stop, send their
+      halves across, and add them together.
+    </p>
+    <p>
+      That happens twice inside every layer. Sixty-four layers, so
+      <span class="num">128</span> full stops for every single word.
+    </p>
+    <p>
+      Cut horizontally instead and machine A simply finishes its thirty-two pancakes, hands B a
+      small parcel, and B carries on. One stop per word.
+    </p>
+    <div class="therefore">
+      <div class="label">Therefore</div>
+      <p>The vertical cut costs <span class="num">128</span> waits per word. The horizontal cut costs one.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2 data-n="07">And waiting has nothing to do with how fat your pipe is.</h2>
+    <p>
+      The parcel being sent is tiny, around <span class="num">8 KB</span>. Over a Thunderbolt
+      cable, physically pushing those bytes onto the wire takes under
+      <span class="num">2 microseconds</span>. The round trip takes about
+      <span class="num">300</span>.
+    </p>
+    <p>
+      So ninety-nine percent of the wait is not moving data. It is the message travelling there,
+      and the reply travelling back. Doubling your bandwidth halves the two microseconds and
+      leaves the three hundred exactly where they were.
+    </p>
+    <div class="therefore">
+      <div class="label">Therefore</div>
+      <p>A wider pipe buys you nothing here. Only a shorter one does. What you are paying for is distance.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2 data-n="08">So let us measure the distances.</h2>
+  </section>
+
+  <figure>
+    <div class="scale">
+      <div class="track">
+        <div class="pin" style="left:13.5%"><s>Thunderbolt cable</s><b>0.35 ms</b><i></i></div>
+        <div class="pin" style="left:37%"><s>Wi-Fi</s><b>3 ms</b><i></i></div>
+        <div class="pin far" style="left:82.5%"><s>Seattle to Yerevan</s><b>200 ms</b><i></i></div>
+      </div>
+      <div class="decades"><span>0.1 ms</span><span>1 ms</span><span>10 ms</span><span>100 ms</span><span>1 s</span></div>
+    </div>
+    <figcaption>
+      Round-trip time for one message, on a logarithmic scale. Each tick is ten times
+      the one before it. The gap between a cable and a continent is not a matter of degree.
+    </figcaption>
+  </figure>
+
+  <section class="step">
+    <p>
+      Now multiply each of those by <span class="num">128</span>, because that is how many times
+      per word the two machines have to stop and check in with each other.
+    </p>
+  </section>
+
+  <figure>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th>Link</th><th>Round trip</th><th class="n">Waiting, per word</th><th class="n">Ceiling</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Thunderbolt cable</td><td>0.35 ms</td><td class="n">45 ms</td><td class="n">22 words/s</td></tr>
+          <tr><td>Wi-Fi</td><td>3 ms</td><td class="n">384 ms</td><td class="n">2.6 words/s</td></tr>
+          <tr class="bad"><td>Seattle to Yerevan</td><td>200 ms</td><td class="n">25.6 s</td><td class="n">0.04 words/s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figcaption>
+      The last row is twenty-five seconds of waiting to produce one word. Not one answer.
+      One word. Then it starts waiting again.
+    </figcaption>
+  </figure>
+
+  <section class="step">
+    <h2 data-n="09">That last number is physics, not a configuration mistake.</h2>
+    <p>
+      Seattle to Yerevan is about <span class="num">10,300 km</span>. Light inside glass fibre
+      travels at roughly two-thirds of its speed in a vacuum. Even with a perfect, straight,
+      dedicated cable that nobody has ever built, the round trip cannot go below
+      <span class="num">103 ms</span>. Real traffic detours through Frankfurt and a dozen
+      routers, so it lands near two hundred.
+    </p>
+    <p>
+      There is no faster tier you can buy. You would have to move Armenia.
+    </p>
+  </section>
+
+  <section class="step">
+    <h2 data-n="10">And I measured the cost of waiting with the distance set to zero.</h2>
+    <p>
+      I ran the same small model on your mini twice. Once normally. Once split in half across
+      two processes on <em>the same machine</em>, so there is no cable, no room, no ocean. The
+      network is a loop inside the operating system, which is as fast as a network can possibly be.
+    </p>
+    <p>
+      It went from <span class="num">60.2</span> words per second to
+      <span class="num">28.6</span>. Splitting it made it
+      <span class="num">2.1&times;</span> slower, with the distance removed entirely.
+    </p>
+    <div class="therefore">
+      <div class="label">Therefore</div>
+      <p>Never split a model that already fits. Splitting is a cost you accept, never a speed-up you chase.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2 data-n="11">Which settles the arrangement.</h2>
+    <p>
+      <strong>The mini and the laptop, joined by a Thunderbolt cable, share one model.</strong>
+      Splitting doubles the memory you can read from, and the waiting eats most of that gain
+      back, so you end up roughly where a single machine would have been if it could have held
+      the model. It could not. That is the whole trade: you are not buying speed, you are
+      buying room.
+    </p>
+    <p>
+      <strong>The M3 Max in Armenia runs its own model, whole, by itself.</strong> You send it a
+      question and pay the two hundred milliseconds once, instead of a hundred and twenty-eight
+      times per word. For anything that is not live conversation, that delay is invisible. It is
+      very likely the most capable machine of the three, and it has plenty of useful work to do.
+      It simply cannot be part of the same brain.
+    </p>
+  </section>
+
+  <p class="kicker">
+    A cluster is not a machine for going fast. It is a machine for making something possible
+    that was not, and the only thing it asks in return is that its members stay close together.
+  </p>
+
+</article>

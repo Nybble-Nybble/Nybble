@@ -1,93 +1,211 @@
 # Nybble
 
-Next-action prediction on life, from Meta glasses footage. University of Washington.
+Nybble turns timestamped first-person frames into a causal action journal, then
+fine-tunes an action predictor with the PowerNap training loop.
 
-This branch covers the first stage: turning egocentric frames into captions that
-describe **what the wearer is doing**. Those captions become the input tokens for a
-downstream text-only predictor, so they are training data — a wrong caption is a
-wrong label, and a truncated one is worse than a long one.
+The default pipeline uses:
 
-## Setup
+- Gemini 3.6 Flash for independent frame captions, semantic action grouping, and
+  batched reward judging
+- `thinkingmachines/Inkling-Small` as the trainable next-action policy
+- Tinker's LoRA training service with group-relative policy optimization
+- a time-aware BM25 and MMR memory for the Think, Retrieve, Revise, Actions loop
+
+The original local MLX captioner remains available as an isolated experiment. It is
+not imported by the PowerNap path.
+
+## What the pipeline actually does
+
+```text
+timestamped frames
+  -> one-frame Gemini captions
+  -> exact semantic action spans per temporal chunk
+  -> append-only action journal
+  -> bounded past K / future N training windows plus the last 5 past frames
+  -> Inkling Small: Think -> Retrieve -> Revise -> Actions
+  -> one batched Gemini reward judgment per rollout group
+  -> GRPO advantages -> Tinker LoRA update
+  -> durable state, sampler, retriever, and metric checkpoints
+```
+
+This differs from a common shorthand description of PowerNap in two important ways.
+Tada's runtime capture does not use ffmpeg as its primary recorder. Its Napsack path
+uses screen and input hooks, groups input bursts, and gives the labeler every ordered
+frame in a chunk. It does not caption only the first and final frame. Nybble keeps the
+same causal grouping and training ideas, but treats Meta glasses frames plus their
+timestamps as the source of truth. See [POWERNAP.md](POWERNAP.md) for the code-level
+mapping and design choices.
+
+## Install
+
+Python 3.11 is required for the Tinker training extra.
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[tinker,dev]'
 ```
 
-For the hosted backends, put your key in `.env` (gitignored):
+For Gemini-only labeling, the base package is enough:
 
+```bash
+pip install -e .
 ```
+
+Set secrets in the environment or in a local `.env` file:
+
+```text
 GEMINI_API_KEY=...
-OPENROUTER_API_KEY=...
+TINKER_API_KEY=...
 ```
 
-An exported environment variable wins over `.env` if both are set.
+Use a data policy appropriate for identifiable egocentric footage. Raw frames are
+sent to Gemini for hosted labeling, and the selected past context frames are sent to
+Tinker when Inkling Small training or inference renders a multimodal prompt.
 
-## Usage
+## 1. Label timestamped frames
+
+If filenames or EXIF contain timestamps:
 
 ```bash
-python run_captions.py                      # on-device, reads test_images/
-python run_captions.py --backend gemini     # hosted
-python run_captions.py path/to/frames       # any folder
+nybble label path/to/frames \
+  --journal data/actions.jsonl \
+  --labels-output data/labels.json \
+  --finalize
 ```
 
-Prints each caption with its wall-clock time and word count.
+For an extracted video sequence, provide its frame rate and start time:
 
-`test_images/` is **gitignored** — the local frames contain identifiable people, and
-this repo is public. Clone it and you get no images; point the script at your own.
+```bash
+nybble label path/to/frames \
+  --fps 2 \
+  --start-time 2026-08-10T12:00:00Z \
+  --chunk-size 10 \
+  --max-gap-seconds 30 \
+  --finalize
+```
 
-## The two backends
+A JSON, JSONL, or CSV manifest can be used instead:
 
-Both expose the same `caption_stream(frames)` and share `prompt.py`, so swapping one
-for the other is a genuine A/B on the model rather than on the prompt.
+```bash
+nybble label path/to/frames --manifest captures.csv
+```
 
-| | `ondevice_vlm.py` | `api_vlm.py` |
-|---|---|---|
-| Model | Qwen3-VL-30B-A3B-Instruct, 4-bit MLX | `gemini-3.6-flash` (or OpenRouter) |
-| Speed | ~4 s/frame | ~20 s/frame (10.8–33.0 s observed) |
-| Cost | free | ~$3.12 / 1k frames, ~$1.56 batch |
-| Data leaves the Mac | no | yes |
+CSV manifests require `path` and one of `captured_at`, `timestamp`, or `time`.
+Timestamps are never replaced with processing time. Natural filename order is used,
+and a gap larger than `--max-gap-seconds` starts a new session.
 
-Measured on an M3 Max, 36 GB. The API is a corpus-generation tool, not a realtime
-one — its latency is thinking time plus a round trip and doesn't tune away, though
-a thread pool makes it irrelevant for batch work.
+`data/label-cache.jsonl` caches both frame captions and grouping responses. A rerun
+therefore resumes without paying for completed Gemini work. The action journal
+transactionally synchronizes each labeled source session, so a growing partial chunk
+replaces its earlier interpretation instead of leaving overlapping stale actions.
+The final nonempty chunk is always labeled, but it remains provisional and is
+excluded from training until it fills, a later session closes it, or `--finalize`
+declares that capture complete. Provisional actions remain available to prediction.
 
-Quality is close. On a test frame Gemini caught a pen on the floor that the local
-model missed; the local model caught the wearer's own sneakers and correctly inferred
-they were standing, which Gemini omitted. For next-action prediction the posture cue
-is probably worth more than the pen.
+## 2. Inspect and materialize training windows
 
-**On the free tier, Google's terms say your content is used to improve their
-products.** The paid tier says it is not. Egocentric footage of identifiable people
-belongs on a paid key, or on-device.
+```bash
+nybble inspect data/actions.jsonl --past-len 50 --future-len 8
 
-## Things learned the hard way
+nybble dataset data/actions.jsonl \
+  --past-len 50 \
+  --future-len 8 \
+  --output data/training-samples.jsonl
+```
 
-Each of these is a comment in the file it applies to; they are collected here because
-every one of them cost a debugging session.
+Each sample contains exact event IDs, a bounded observed context, and a distinct
+future target. Windows that cross a labeling-availability boundary or split one
+Gemini grouping chunk between past and future are excluded.
 
-- **Do not drop the local model to 3-bit.** It fails at spatial grounding — it read a
-  top-down frame of the wearer's own sneakers as "lying on their back on the floor".
-  4-bit fixes it outright and is *faster*. 6-bit exceeds the wired-memory limit and
-  thrashes for no measured quality gain.
-- **One frame per caption, never a pair.** Sending the previous frame as motion
-  context made the model fuse two scenes and caption the wrong one, preferring
-  whichever image was larger. The temporal signal lives across captions instead.
-- **`max_tokens` is a backstop, not a length control.** The prompt's word cap does
-  the real work. On Gemini the reasoning pass shares that budget while staying out of
-  `usage.completion_tokens`, so a caption-sized budget starves the caption — at 600 it
-  returned `finish_reason="length"` after 15 visible words with no obvious cause.
-- **Greedy decoding on the quantized local model loops or restarts.** On low-detail
-  frames it repeats a clause or finishes and begins a second caption.
-  `repetition_penalty=1.15` stops it; 1.1 did not.
-- **The prompt has to ask for people explicitly.** An earlier version listed only
-  objects and surfaces, and the local model obeyed literally — walking straight past a
-  person standing in frame.
+## 3. Train Inkling Small
 
-## Files
+```bash
+nybble train data/actions.jsonl \
+  --steps 20 \
+  --run-dir runs/powernap \
+  --past-len 50 \
+  --future-len 8 \
+  --max-images 5
+```
 
-| | |
-|---|---|
-| `prompt.py` | The captioning prompt. Shared by both backends. |
-| `ondevice_vlm.py` | Local MLX captioner. |
-| `api_vlm.py` | Hosted captioner. New provider = one `PROVIDERS` entry. |
-| `run_captions.py` | Captions a folder, reports per-frame timing. |
+The defaults are:
+
+```text
+model       thinkingmachines/Inkling-Small
+renderer    tml_v0
+LoRA rank   32
+batch size  8 distinct windows
+group size  4 rollouts per window
+past images 5 most recent image-bearing actions
+retrieval memory 4096 tokenizer tokens maximum
+```
+
+Resume both the model and optimizer state, plus the temporal retriever:
+
+```bash
+nybble train data/actions.jsonl \
+  --steps 20 \
+  --run-dir runs/powernap \
+  --resume-latest
+```
+
+Intermediate remote checkpoints use a seven-day TTL. The final state and sampler
+are saved without an explicit TTL. Local checkpoint manifests, metrics, and
+retriever snapshots are append-only and are never deleted by the trainer.
+
+## 4. Predict
+
+```bash
+nybble predict data/actions.jsonl \
+  --run-dir runs/powernap \
+  --past-len 50 \
+  --future-len 8
+```
+
+Inference uses the same bounded context renderer, three-turn prompt sequence,
+ordered past-frame selection, Inkling renderer, and temporal retrieval rules as
+training. Predictions are appended to `runs/powernap/predictions.jsonl`. Pass
+`--max-images 0` to run an explicit text-only experiment. Both commands apply the
+same `--retrieval-max-tokens` cap (4096 by default) only to retrieved reflections;
+the observed action journal, screenshots, and phase instruction are never truncated.
+
+## Legacy caption experiments
+
+The original scripts still support direct caption comparisons:
+
+```bash
+python run_captions.py path/to/frames
+python run_captions.py path/to/frames --backend gemini
+```
+
+The most important finding from those experiments remains enforced here: caption
+one frame per request. Supplying a previous frame made the visual model fuse scenes.
+Temporal evidence belongs in the grouping step and the Inkling context. The local
+MLX path also retains its measured 4-bit and repetition-penalty settings in
+`ondevice_vlm.py`, but it is not a PowerNap dependency.
+
+## Repository layout
+
+| Path | Role |
+| --- | --- |
+| `src/nybble/vlm/gemini.py` | Native Gemini image, grouping, and structured-output adapter |
+| `src/nybble/labeling/` | Timestamp discovery, strict spans, concurrency, and resumable caches |
+| `src/nybble/models.py` | Versioned immutable records |
+| `src/nybble/data/` | Crash-tolerant journal and causal sample construction |
+| `src/nybble/retrieval/` | Time-filtered BM25, deduplication, MMR, and checkpoints |
+| `src/nybble/powernap/` | Prompts, rollout environment, Gemini rewards, GRPO trainer, and inference |
+| `src/nybble/pipeline.py` | Label-to-event and sample-to-rollout adapters |
+| `src/nybble/cli.py` | End-to-end command-line interface |
+| `api_vlm.py` | Legacy OpenAI-compatible hosted caption experiment |
+| `ondevice_vlm.py` | Optional local MLX caption experiment |
+
+## Test
+
+```bash
+pytest
+ruff check src tests
+```
+
+The default tests use fake Gemini and Tinker boundaries and make no paid network
+requests. Tests marked `live_gemini` or `live_tinker` require explicit credentials.

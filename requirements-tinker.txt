@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Exact pair validated by this implementation. Inkling requires Python 3.11+.
+tinker==0.25.0
+tinker-cookbook[inkling]==0.5.3
+tml-renderers==0.1.0
+torch==2.13.0
