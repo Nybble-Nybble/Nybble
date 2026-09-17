@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nybble"
+version = "0.1.0"
+description = "Consent-gated local importer for personal behavioral data"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+# Deliberately zero required dependencies: the importer must run on a stranger's
+# laptop with nothing but a system Python. Every parser degrades to stdlib.
+dependencies = []
+
+[project.optional-dependencies]
+# Wider file-format coverage.
+formats = [
+    "pypdf>=4.0",
+    "striprtf>=0.0.26",
+    "chardet>=5.0",
+]
+# Local audio transcription.
+audio = [
+    "faster-whisper>=1.0",
+]
+# Off-device taste inference.
+llm = [
+    "anthropic>=0.40",
+]
+# Screenshot / image OCR.
+ocr = [
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0",
+]
+all = [
+    "nybble[formats,audio,llm,ocr]",
+]
+dev = [
+    "pytest>=7.4",
+]
+
+[project.scripts]
+nybble = "nybble.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["nybble*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
