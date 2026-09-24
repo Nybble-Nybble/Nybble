@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Never commit collected personal data.
+.nybble/
+*.jsonl
+consent.json
+manifest.json
+taste_profile.json
