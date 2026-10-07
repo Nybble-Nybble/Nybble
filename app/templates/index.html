@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nybble</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237ccf8a'/><text x='16' y='23' font-family='Georgia,serif' font-size='20' text-anchor='middle' fill='%230f3d18'>N</text></svg>">
+<link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Nybble</a>
+  <div class="topbar-actions">
+    <a class="btn" href="/data">Your data</a>
+    <button id="connect-all-btn" class="btn" type="button">Connect all</button>
+    <button id="finetune-btn" class="btn btn-primary" type="button">Finetune</button>
+  </div>
+</header>
+
+<main>
+  <section class="intro">
+    <h1>Connect your sources</h1>
+    <p>Pick the tools your model should learn from. Connect them, then finetune.</p>
+  </section>
+
+  <div id="grid" class="grid">
+    {% for m in mcps %}
+    <button class="card{% if m.connected %} is-connected{% endif %}" type="button" data-id="{{ m.id }}">
+      <span class="logo" style="--c: {{ m.color }}">{{ m.name[0] }}</span>
+      <span class="card-body">
+        <span class="card-name">{{ m.name }}</span>
+        <span class="card-desc">{{ m.description }}</span>
+      </span>
+      <span class="card-foot">
+        <span class="tag">{{ m.category }}</span>
+        <span class="status">{{ "Connected" if m.connected else "Connect" }}</span>
+      </span>
+    </button>
+    {% endfor %}
+  </div>
+</main>
+
+<dialog id="connect-dialog" class="dialog">
+  <form id="connect-form" method="dialog">
+    <div class="dialog-head">
+      <span id="cd-logo" class="logo"></span>
+      <div>
+        <h2 id="cd-title"></h2>
+        <p id="cd-desc" class="muted"></p>
+      </div>
+    </div>
+    <div id="cd-content"></div>
+    <p id="cd-error" class="error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="button" id="cd-disconnect" class="btn btn-danger" hidden>Disconnect</button>
+      <button type="submit" id="cd-submit" class="btn btn-primary"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="finetune-dialog" class="dialog">
+  <form id="finetune-form" method="dialog">
+    <h2>Finetune your model</h2>
+    <p class="muted">Choose which connected sources to train on.</p>
+    <div id="ft-sources" class="sources"></div>
+    <p id="ft-error" class="error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" id="ft-submit" class="btn btn-primary">Start finetune</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>window.MCPS = {{ mcps | tojson }};</script>
+<script src="{{ url_for('static', path='app.js') }}"></script>
+</body>
+</html>
