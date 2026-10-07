@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your data · Nybble</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%237ccf8a'/><text x='16' y='23' font-family='Georgia,serif' font-size='20' text-anchor='middle' fill='%230f3d18'>N</text></svg>">
+<link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Nybble</a>
+  <div class="topbar-actions">
+    <a class="btn" href="/">Sources</a>
+  </div>
+</header>
+
+<main class="data-main">
+  <section class="intro data-intro">
+    <div>
+      <h1>Your data</h1>
+      <p>Everything Nybble pulled from Messages and WhatsApp. It stays on this Mac, in <code>~/Nybble/data</code>.</p>
+    </div>
+    <form id="search-form" class="search-form" role="search">
+      <input id="search-q" type="search" placeholder="Search every message" aria-label="Search every message" autocomplete="off">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+  </section>
+
+  <section id="stats" class="stats" aria-label="Totals"></section>
+
+  <div id="empty" class="data-empty" hidden>
+    <h2>No data yet</h2>
+    <p class="muted">Connect Messages or WhatsApp on the <a href="/">Sources</a> page, then click Finetune. The extracted chats will show up here.</p>
+  </div>
+
+  <div id="browser" class="browser" hidden>
+    <aside class="chat-list-pane">
+      <input id="chat-filter" type="search" placeholder="Find a chat" aria-label="Filter chats" autocomplete="off">
+      <div class="filters" role="group" aria-label="Source">
+        <button class="chip-btn is-on" type="button" data-src="all">All</button>
+        <button class="chip-btn" type="button" data-src="messages">iMessage</button>
+        <button class="chip-btn" type="button" data-src="whatsapp">WhatsApp</button>
+      </div>
+      <label class="check"><input id="only-mine" type="checkbox"> Only chats I've replied in</label>
+      <p id="list-count" class="muted list-count"></p>
+      <ul id="chat-list" class="chat-list"></ul>
+    </aside>
+    <section id="viewer" class="viewer" aria-live="polite">
+      <p class="muted viewer-hint">Pick a chat to read it, or search every message above.</p>
+    </section>
+  </div>
+</main>
+
+<script src="{{ url_for('static', path='data.js') }}"></script>
+</body>
+</html>

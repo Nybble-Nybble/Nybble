@@ -23,12 +23,19 @@ async function api(path, body) {
   return data;
 }
 
-function toast(msg) {
+async function getJSON(path) {
+  const res = await fetch(path);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong");
+  return data;
+}
+
+function toast(msg, ms = 2400) {
   const t = $("toast");
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove("show"), 2400);
+  toast.timer = setTimeout(() => t.classList.remove("show"), ms);
 }
 
 function renderCard(m) {
@@ -98,7 +105,7 @@ $("connect-form").addEventListener("submit", async (e) => {
     mcps.set(updated.id, updated);
     renderCard(updated);
     connectDialog.close();
-    toast(`${updated.name} connected`);
+    toast(updated.detail ? `${updated.name} connected · ${updated.detail}` : `${updated.name} connected`);
   } catch (err) {
     $("cd-error").textContent = err.message;
   } finally {
@@ -117,6 +124,27 @@ $("cd-disconnect").addEventListener("click", async () => {
     $("cd-error").textContent = err.message;
   }
 });
+
+// ---- Connect all ----
+
+async function connectAll() {
+  const btn = $("connect-all-btn");
+  const before = [...mcps.values()].filter((m) => m.connected).length;
+  btn.disabled = true;
+  try {
+    const { mcps: all, skipped, failed = [] } = await api("/api/mcps/connect-all");
+    all.forEach((m) => { mcps.set(m.id, m); renderCard(m); });
+    const added = all.filter((m) => m.connected).length - before;
+    let msg = added ? `Connected ${added} source${added === 1 ? "" : "s"}` : "Nothing new to connect";
+    if (skipped.length) msg += `. Needs details: ${skipped.join(", ")}`;
+    if (failed.length) msg += `. Couldn't open: ${failed.map((f) => f.name).join(", ")} (click the card for details)`;
+    toast(msg, failed.length ? 5000 : 2400);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // ---- Finetune popup ----
 
@@ -149,11 +177,35 @@ $("finetune-form").addEventListener("submit", async (e) => {
   try {
     const job = await api("/api/finetune", { sources });
     finetuneDialog.close();
-    toast(`Finetune job ${job.id} queued`);
+    if (job.status === "extracting") {
+      toast("Extracting your messages…", 60000);
+      watchJob(job.id);
+    } else {
+      toast(`Finetune job ${job.id} queued`);
+    }
   } catch (err) {
     $("ft-error").textContent = err.message;
   }
 });
+
+// Poll a job until its message sources are extracted, then report what came out of each.
+async function watchJob(id) {
+  let job;
+  try {
+    do {
+      await new Promise((r) => setTimeout(r, 1000));
+      job = await getJSON(`/api/finetune/${id}`);
+    } while (job.status === "extracting");
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+  const parts = Object.entries(job.results).map(([sid, r]) => {
+    const name = mcps.get(sid)?.name ?? sid;
+    return r.error ? `${name} failed: ${r.error}` : `${name}: ${r.sessions.toLocaleString()} sessions`;
+  });
+  toast(`Job ${job.id} queued. ${parts.join(" · ")}`, 6000);
+}
 
 // ---- Wiring ----
 
@@ -161,6 +213,7 @@ $("grid").addEventListener("click", (e) => {
   const card = e.target.closest(".card");
   if (card) openConnect(card.dataset.id);
 });
+$("connect-all-btn").addEventListener("click", connectAll);
 $("finetune-btn").addEventListener("click", openFinetune);
 
 document.querySelectorAll("[data-close]").forEach((b) =>

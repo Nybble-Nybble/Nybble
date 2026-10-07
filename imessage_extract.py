@@ -110,6 +110,7 @@ def write_sessions(out_path: Path = OUT_PATH, db_path: Path = DB_PATH, chat: Opt
         for chat_id, rows in chats(fetch_messages(db_path, chat)):
             n_chats += 1
             header = {
+                "source": "imessage",
                 "chat_id": chat_id,
                 "chat": rows[0]["chat_identifier"],
                 "group": rows[0]["chat_style"] == 43,

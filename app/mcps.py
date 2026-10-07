@@ -18,10 +18,21 @@ MCPS = [
         "category": "Communication", "auth": "local",
         "description": "Read iMessage and SMS history on your Mac.",
         "fields": [
-            {"name": "db_path", "label": "Messages database path",
-             "placeholder": "~/Library/Messages/chat.db"},
+            {"name": "db_path", "label": "Messages database path (optional)",
+             "placeholder": "~/Library/Messages/chat.db", "required": False},
         ],
-        "note": "Requires Full Disk Access for the MCP server.",
+        "note": "Leave blank to use the default location. The app running the Nybble server needs Full Disk Access.",
+    },
+    {
+        "id": "whatsapp", "name": "WhatsApp", "color": "#25D366",
+        "category": "Communication", "auth": "local",
+        "description": "Read WhatsApp chats from the desktop app on your Mac.",
+        "fields": [
+            {"name": "db_path", "label": "WhatsApp database path (optional)",
+             "placeholder": "~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite",
+             "required": False},
+        ],
+        "note": "Leave blank to use the default location. Needs the WhatsApp desktop app, signed in.",
     },
     {
         "id": "slack", "name": "Slack", "color": "#4A154B",
