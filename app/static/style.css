@@ -1,4 +1,17 @@
+/* Headings: Instrument Serif (SIL OFL, fonts/OFL.txt), served from here so the page makes no outside requests.
+   Everything else: the system UI font (SF Pro on a Mac), which is what Messages itself uses. */
+@font-face {
+  font-family: "Instrument Serif"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("fonts/instrument-serif-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Instrument Serif"; font-style: italic; font-weight: 400; font-display: swap;
+  src: url("fonts/instrument-serif-italic.woff2") format("woff2");
+}
+
 :root {
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Instrument Serif", Georgia, serif;
   --bg: #ffffff;
   --fg: #000000;
   --muted: #6b6b6b;
@@ -28,8 +41,11 @@ html, body { margin: 0; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 17px/1.5 Georgia, "Times New Roman", Times, serif;
+  font: 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
 }
+.brand, .intro h1, .dialog h2, .data-empty h2, .viewer-head h2 { font-family: var(--serif); font-weight: 400; letter-spacing: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .topbar {
   position: sticky; top: 0; z-index: 10;
@@ -39,12 +55,11 @@ body {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
-.brand { color: var(--accent); font-size: 1.6rem; text-decoration: none; letter-spacing: -0.02em; }
+.brand { color: var(--accent); font-size: 1.9rem; line-height: 1; text-decoration: none; }
 
 main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 .intro { text-align: center; margin-bottom: 36px; }
-.intro h1 { font-weight: normal; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.02em; margin: 0 0 8px; }
-.intro p { margin: 0; color: var(--muted); }
+.intro h1 { font-size: clamp(2.5rem, 6vw, 3.75rem); line-height: 1.05; margin: 0 0 8px; }
 
 .grid {
   display: grid; gap: 16px;
@@ -69,14 +84,22 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
   background: var(--c, #888); color: #fff;
   font: 600 1.25rem/1 -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+/* Full-colour brand logo on a white tile (white in dark mode too, so logo colours stay true).
+   The letter stays in the markup, hidden, as a fallback. */
+.logo.has-icon { position: relative; color: transparent; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+.logo.has-icon::before { content: ""; position: absolute; inset: 16%; background: var(--icon) center / contain no-repeat; }
 .card-body { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.card-name { font-size: 1.1rem; }
+.card-name { font-size: 1rem; font-weight: 600; }
 .card-desc { color: var(--muted); font-size: .9rem; line-height: 1.4; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; font-size: .8rem; }
+.card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: .8rem; }
 .tag { color: var(--muted); }
-.status { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.status { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; margin-left: auto; }
 .is-connected .status { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .is-connected .status::before { content: "● "; }
+.card.has-error .status { border-color: var(--danger); color: var(--danger); }
+.card.is-unavailable .logo { opacity: .6; }
+.card.is-unavailable .card-name { color: var(--muted); }
+.card.is-unavailable .status { border-style: dashed; color: var(--muted); }
 
 .topbar-actions { display: flex; gap: 10px; }
 
@@ -99,12 +122,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 .dialog::backdrop { background: rgba(0,0,0,.35); backdrop-filter: blur(2px); }
 .dialog[open] { animation: pop .16s ease-out; }
 @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
-.dialog h2 { font-weight: normal; margin: 0; font-size: 1.4rem; }
+.dialog h2 { margin: 0; font-size: 1.75rem; line-height: 1.1; }
 .dialog-head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
 .dialog-head p { margin: 2px 0 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .muted { color: var(--muted); font-size: .92rem; }
-.error { color: var(--danger); font-size: .9rem; min-height: 1em; margin: 10px 0 0; }
+.error { color: var(--danger); font-size: .9rem; min-height: 1em; margin: 10px 0 0; overflow-wrap: anywhere; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .field label { font-size: .9rem; }
@@ -119,6 +142,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 .scopes li { font-size: .92rem; padding: 3px 0; }
 .scopes li::before { content: "✓ "; color: var(--accent); }
 .note { margin-top: 12px; font-size: .85rem; color: var(--muted); }
+.unavailable-msg { padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--line); color: var(--muted); font-size: .92rem; }
 .connected-msg { padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 .sources { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
@@ -131,8 +155,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
-  padding: 10px 18px; border-radius: 999px;
-  background: var(--fg); color: var(--bg); font-size: .92rem;
+  padding: 10px 18px; border-radius: 14px; max-width: min(560px, calc(100vw - 32px)); width: max-content;
+  background: var(--fg); color: var(--bg); font-size: .92rem; line-height: 1.4; text-align: center; overflow-wrap: anywhere;
   opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -148,7 +172,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 
 .data-main { max-width: 1200px; display: flex; flex-direction: column; gap: 28px; }
 .data-intro { margin-bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 22px; }
-.data-intro code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace; }
 .search-form { display: flex; gap: 8px; width: min(520px, 100%); }
 .search-form input, #chat-filter {
   flex: 1; min-width: 0; font: inherit; font-size: 1rem;
@@ -157,16 +180,18 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 }
 .search-form input:focus, #chat-filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-.stat { display: flex; gap: 14px; align-items: center; padding: 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
-.stat-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.stat-big { font-size: 1.9rem; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.stat-label { color: var(--muted); font-size: .88rem; line-height: 1.4; }
-.stat-quiet .stat-big { color: var(--warn); }
+
+.stats { display: flex; justify-content: center; }
+.stats[hidden] { display: none; }
+.stat { display: flex; gap: 12px; align-items: center; padding: 10px 18px 10px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
+.stat-body { display: flex; align-items: baseline; gap: 8px; }
+.stat-big { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--warn); }
+.stat-label { color: var(--muted); font-size: .92rem; }
+.stat .logo { width: 32px; height: 32px; border-radius: 9px; font-size: 1rem; }
 .logo.quiet { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
 
 .data-empty { text-align: center; padding: 60px 16px; border: 1px dashed var(--line); border-radius: 14px; }
-.data-empty h2 { font-weight: normal; margin: 0 0 6px; }
+.data-empty h2 { font-size: 1.9rem; margin: 0 0 6px; }
 
 .browser {
   display: grid; grid-template-columns: 340px minmax(0, 1fr);
@@ -193,11 +218,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
 .chat-row:hover, .hit:hover { background: var(--card-hover); }
 .chat-row.is-current { background: var(--soft); }
 .chat-row:focus-visible, .hit:focus-visible, .chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.chat-row .logo, .hit .logo, .stat .logo, .viewer-head .logo { width: 36px; height: 36px; border-radius: 10px; font-size: 1rem; }
-.stat .logo { width: 44px; height: 44px; border-radius: 11px; font-size: 1.25rem; }
+.chat-row .logo, .hit .logo, .viewer-head .logo { width: 36px; height: 36px; border-radius: 10px; font-size: 1rem; }
 .chat-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .chat-row-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.chat-name { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-name { font-size: .95rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chat-date { color: var(--muted); font-size: .78rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chat-preview { color: var(--muted); font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-meta { font-size: .78rem; color: var(--muted); }
@@ -211,13 +235,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
   background: var(--bg);
 }
 .viewer-head > div { min-width: 0; }
-.viewer-head h2 { font-weight: normal; font-size: 1.5rem; letter-spacing: -0.01em; margin: 0; overflow-wrap: anywhere; }
+.viewer-head h2 { font-size: 1.8rem; line-height: 1.1; margin: 0; overflow-wrap: anywhere; }
+.viewer-head h2:focus { outline: none; } /* only focused by script, to keep focus in the chat after a search */
 .viewer-head p { margin: 2px 0 0; }
 .more { display: block; margin: 18px auto 0; font-size: .85rem; }
 .session { padding: 18px 0 4px; scroll-margin-top: 96px; border-radius: 12px; }
 .session.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { from { background: var(--soft); } }
-.session-head { display: flex; align-items: center; gap: 12px; font-size: .8rem; font-style: italic; color: var(--muted); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+.session-head { display: flex; align-items: center; gap: 12px; font-size: .78rem; font-weight: 500; color: var(--muted); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
 .session-head::before, .session-head::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .msg { display: flex; flex-direction: column; margin: 3px 0; }
 .msg.me { align-items: flex-end; }

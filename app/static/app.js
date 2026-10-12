@@ -4,6 +4,8 @@ const $ = (id) => document.getElementById(id);
 const connectDialog = $("connect-dialog");
 const finetuneDialog = $("finetune-dialog");
 let current = null;
+// Why the last connect attempt failed, by connector id. Shown on the card and in its popup until it connects.
+const connectErrors = new Map();
 
 function el(tag, attrs = {}, text) {
   const node = document.createElement(tag);
@@ -13,18 +15,16 @@ function el(tag, attrs = {}, text) {
 }
 
 async function api(path, body) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong");
-  return data;
-}
-
-async function getJSON(path) {
-  const res = await fetch(path);
+  let res;
+  try {
+    res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+  } catch {
+    throw new Error("Can't reach the Nybble server. Is it still running?");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong");
   return data;
@@ -38,10 +38,21 @@ function toast(msg, ms = 2400) {
   toast.timer = setTimeout(() => t.classList.remove("show"), ms);
 }
 
+// Put a connector's full-colour logo (app/static/icons/<id>.svg) on a .logo tile.
+function paintLogo(node, m) {
+  node.textContent = m.name[0];
+  node.classList.add("has-icon");
+  node.style.setProperty("--c", m.color);
+  node.style.setProperty("--icon", `url("/static/icons/${m.id}.svg")`);
+}
+
 function renderCard(m) {
   const card = document.querySelector(`.card[data-id="${m.id}"]`);
+  const failed = !m.connected && connectErrors.has(m.id);
   card.classList.toggle("is-connected", m.connected);
-  card.querySelector(".status").textContent = m.connected ? "Connected" : "Connect";
+  card.classList.toggle("has-error", failed);
+  card.querySelector(".status").textContent =
+    !m.available ? "Coming soon" : m.connected ? "Connected" : failed ? "Couldn't connect" : "Connect";
 }
 
 // ---- Connect popup ----
@@ -49,18 +60,30 @@ function renderCard(m) {
 function openConnect(id) {
   current = mcps.get(id);
   const m = current;
-  $("cd-logo").textContent = m.name[0];
-  $("cd-logo").style.setProperty("--c", m.color);
+  paintLogo($("cd-logo"), m);
   $("cd-title").textContent = m.name;
   $("cd-desc").textContent = m.description;
-  $("cd-error").textContent = "";
+  $("cd-error").textContent = m.connected ? "" : connectErrors.get(m.id) || "";
   $("cd-disconnect").hidden = !m.connected;
+  $("cd-refresh").hidden = !m.connected;
 
   const content = $("cd-content");
   content.replaceChildren();
 
-  if (m.connected) {
-    content.append(el("p", { className: "connected-msg" }, `${m.name} is connected.`));
+  if (!m.available) {
+    content.append(el("p", { className: "unavailable-msg" },
+      `Nybble can't connect to ${m.name} yet. Right now only Messages and WhatsApp can be connected.`));
+    if (m.scopes?.length) {
+      content.append(el("p", { className: "muted" }, "Once it's ready, Nybble will be able to:"));
+      const ul = el("ul", { className: "scopes" });
+      m.scopes.forEach((s) => ul.append(el("li", {}, s)));
+      content.append(ul);
+    }
+    $("cd-submit").hidden = true;
+  } else if (m.connected) {
+    content.append(el("p", { className: "connected-msg" },
+      `${m.name} is connected. Its messages are on the Your data page; use Update data to pull in new ones. ` +
+      `Disconnecting deletes them from this Mac.`));
     $("cd-submit").hidden = true;
   } else if (m.auth === "oauth") {
     content.append(el("p", { className: "muted" }, `Nybble will be able to:`));
@@ -99,29 +122,58 @@ $("connect-form").addEventListener("submit", async (e) => {
   const fields = {};
   $("cd-content").querySelectorAll("input").forEach((i) => (fields[i.name] = i.value));
   const btn = $("cd-submit");
+  const label = btn.textContent;
   btn.disabled = true;
+  btn.textContent = "Connecting…";
   try {
     const updated = await api(`/api/mcps/${current.id}/connect`, { fields });
+    connectErrors.delete(updated.id);
     mcps.set(updated.id, updated);
     renderCard(updated);
     connectDialog.close();
     toast(updated.detail ? `${updated.name} connected · ${updated.detail}` : `${updated.name} connected`);
   } catch (err) {
     $("cd-error").textContent = err.message;
+    connectErrors.set(current.id, err.message);
+    renderCard(current);
   } finally {
     btn.disabled = false;
+    btn.textContent = label;
+  }
+});
+
+// Re-run the extractor for a connected source to pick up new messages.
+$("cd-refresh").addEventListener("click", async () => {
+  const btn = $("cd-refresh");
+  btn.disabled = $("cd-disconnect").disabled = true; // the server would make a Disconnect wait anyway
+  btn.textContent = "Updating…";
+  try {
+    const updated = await api(`/api/mcps/${current.id}/extract`);
+    connectDialog.close();
+    toast(`${updated.name} updated · ${updated.detail}`);
+  } catch (err) {
+    $("cd-error").textContent = err.message;
+  } finally {
+    btn.disabled = $("cd-disconnect").disabled = false;
+    btn.textContent = "Update data";
   }
 });
 
 $("cd-disconnect").addEventListener("click", async () => {
+  const btn = $("cd-disconnect");
+  btn.disabled = $("cd-refresh").disabled = true;
+  btn.textContent = "Disconnecting…";
   try {
     const updated = await api(`/api/mcps/${current.id}/disconnect`);
     mcps.set(updated.id, updated);
     renderCard(updated);
     connectDialog.close();
-    toast(`${updated.name} disconnected`);
+    toast(`${updated.name} disconnected · its data was deleted`);
   } catch (err) {
     $("cd-error").textContent = err.message;
+  } finally {
+    btn.disabled = $("cd-refresh").disabled = false;
+    btn.textContent = "Disconnect";
   }
 });
 
@@ -131,18 +183,22 @@ async function connectAll() {
   const btn = $("connect-all-btn");
   const before = [...mcps.values()].filter((m) => m.connected).length;
   btn.disabled = true;
+  btn.textContent = "Connecting…";
   try {
     const { mcps: all, skipped, failed = [] } = await api("/api/mcps/connect-all");
-    all.forEach((m) => { mcps.set(m.id, m); renderCard(m); });
+    failed.forEach((f) => connectErrors.set(f.id, f.error));
+    all.forEach((m) => { if (m.connected) connectErrors.delete(m.id); mcps.set(m.id, m); renderCard(m); });
     const added = all.filter((m) => m.connected).length - before;
-    let msg = added ? `Connected ${added} source${added === 1 ? "" : "s"}` : "Nothing new to connect";
+    let msg = added ? `Connected ${added} source${added === 1 ? "" : "s"}` : failed.length ? "Nothing connected" : "Nothing new to connect";
     if (skipped.length) msg += `. Needs details: ${skipped.join(", ")}`;
-    if (failed.length) msg += `. Couldn't open: ${failed.map((f) => f.name).join(", ")} (click the card for details)`;
-    toast(msg, failed.length ? 5000 : 2400);
+    if (failed.length === 1) msg += `. ${failed[0].name}: ${failed[0].error}`;
+    else if (failed.length) msg += `. Couldn't connect ${failed.map((f) => f.name).join(" or ")}; open a card to see why`;
+    toast(msg, failed.length ? 8000 : 2400);
   } catch (err) {
-    toast(err.message);
+    toast(err.message, 5000);
   } finally {
     btn.disabled = false;
+    btn.textContent = "Connect all";
   }
 }
 
@@ -161,8 +217,8 @@ function openFinetune() {
     connected.forEach((m) => {
       const row = el("label", { className: "source" });
       row.append(el("input", { type: "checkbox", value: m.id, checked: true }));
-      const logo = el("span", { className: "logo" }, m.name[0]);
-      logo.style.setProperty("--c", m.color);
+      const logo = el("span", { className: "logo" });
+      paintLogo(logo, m);
       row.append(logo, el("span", {}, m.name));
       list.append(row);
     });
@@ -177,35 +233,11 @@ $("finetune-form").addEventListener("submit", async (e) => {
   try {
     const job = await api("/api/finetune", { sources });
     finetuneDialog.close();
-    if (job.status === "extracting") {
-      toast("Extracting your messages…", 60000);
-      watchJob(job.id);
-    } else {
-      toast(`Finetune job ${job.id} queued`);
-    }
+    toast(`Finetune job ${job.id} queued`);
   } catch (err) {
     $("ft-error").textContent = err.message;
   }
 });
-
-// Poll a job until its message sources are extracted, then report what came out of each.
-async function watchJob(id) {
-  let job;
-  try {
-    do {
-      await new Promise((r) => setTimeout(r, 1000));
-      job = await getJSON(`/api/finetune/${id}`);
-    } while (job.status === "extracting");
-  } catch (err) {
-    toast(err.message);
-    return;
-  }
-  const parts = Object.entries(job.results).map(([sid, r]) => {
-    const name = mcps.get(sid)?.name ?? sid;
-    return r.error ? `${name} failed: ${r.error}` : `${name}: ${r.sessions.toLocaleString()} sessions`;
-  });
-  toast(`Job ${job.id} queued. ${parts.join(" · ")}`, 6000);
-}
 
 // ---- Wiring ----
 

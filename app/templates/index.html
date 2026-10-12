@@ -13,27 +13,31 @@
   <div class="topbar-actions">
     <a class="btn" href="/data">Your data</a>
     <button id="connect-all-btn" class="btn" type="button">Connect all</button>
+    {% if finetune_enabled %}
     <button id="finetune-btn" class="btn btn-primary" type="button">Finetune</button>
+    {% else %}
+    <!-- Tooltip lives on a wrapper: some browsers show no tooltip for a disabled button. -->
+    <span title="Finetuning isn't available right now"><button id="finetune-btn" class="btn btn-primary" type="button" disabled>Finetune</button></span>
+    {% endif %}
   </div>
 </header>
 
 <main>
   <section class="intro">
     <h1>Connect your sources</h1>
-    <p>Pick the tools your model should learn from. Connect them, then finetune.</p>
   </section>
 
   <div id="grid" class="grid">
     {% for m in mcps %}
-    <button class="card{% if m.connected %} is-connected{% endif %}" type="button" data-id="{{ m.id }}">
-      <span class="logo" style="--c: {{ m.color }}">{{ m.name[0] }}</span>
+    <button class="card{% if m.connected %} is-connected{% endif %}{% if not m.available %} is-unavailable{% endif %}" type="button" data-id="{{ m.id }}">
+      <span class="logo has-icon" style="--c: {{ m.color }}; --icon: url('{{ url_for('static', path='icons/' ~ m.id ~ '.svg') }}')">{{ m.name[0] }}</span>
       <span class="card-body">
         <span class="card-name">{{ m.name }}</span>
         <span class="card-desc">{{ m.description }}</span>
       </span>
       <span class="card-foot">
         <span class="tag">{{ m.category }}</span>
-        <span class="status">{{ "Connected" if m.connected else "Connect" }}</span>
+        <span class="status">{{ "Coming soon" if not m.available else "Connected" if m.connected else "Connect" }}</span>
       </span>
     </button>
     {% endfor %}
@@ -54,6 +58,7 @@
     <div class="dialog-actions">
       <button type="button" class="btn" data-close>Cancel</button>
       <button type="button" id="cd-disconnect" class="btn btn-danger" hidden>Disconnect</button>
+      <button type="button" id="cd-refresh" class="btn" hidden>Update data</button>
       <button type="submit" id="cd-submit" class="btn btn-primary"></button>
     </div>
   </form>

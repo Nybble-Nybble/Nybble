@@ -1,14 +1,17 @@
 const $ = (id) => document.getElementById(id);
-// Same name, letter and colour as the connector cards on the Sources page.
+// Same name, letter, colour and icon as the connector cards on the Sources page.
 const SOURCES = {
-  messages: { name: "iMessage", letter: "M", color: "#34C759" },
+  messages: { name: "Messages", letter: "M", color: "#34C759" },
   whatsapp: { name: "WhatsApp", letter: "W", color: "#25D366" },
 };
-const PAGE = 60; // sessions rendered at a time in a chat
+const PAGE = 60; // sessions fetched and shown at a time in a chat
 
 let chats = [];
 let srcFilter = "all";
-let current = null; // { row, data, from }
+let current = null; // { row, total, from, to, sessions }: sessions [from, to) of total are loaded and on screen
+// Bumped by every chat open and search. Both draw into the same pane, so a slow answer that comes back
+// after a newer click or search is dropped instead of replacing what the user asked for last.
+let viewSeq = 0;
 
 function el(tag, attrs = {}, text) {
   const node = document.createElement(tag);
@@ -19,13 +22,19 @@ function el(tag, attrs = {}, text) {
 
 function logo(source) {
   const s = SOURCES[source];
-  const node = el("span", { className: "logo", title: s.name }, s.letter);
+  const node = el("span", { className: "logo has-icon", title: s.name }, s.letter);
   node.style.setProperty("--c", s.color);
+  node.style.setProperty("--icon", `url("/static/icons/${source}.svg")`);
   return node;
 }
 
 async function getJSON(path) {
-  const res = await fetch(path);
+  let res;
+  try {
+    res = await fetch(path);
+  } catch {
+    throw new Error("Can't reach the Nybble server. Is it still running?");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong");
   return data;
@@ -69,30 +78,18 @@ function when(t) {
 
 // ---- stats + list ----
 
-function statCard(icon, big, label, extraClass = "") {
-  const card = el("div", { className: `stat ${extraClass}` });
+function renderStats() {
+  const quiet = chats.filter((c) => c.mine === 0).length;
+  const stats = $("stats");
+  stats.hidden = quiet === 0;
+  if (!quiet) return;
   const body = el("div", { className: "stat-body" });
-  body.append(el("span", { className: "stat-big" }, big), el("span", { className: "stat-label" }, label));
-  card.append(icon, body);
-  return card;
+  body.append(el("span", { className: "stat-big" }, n(quiet)), el("span", { className: "stat-label" }, "chats you never replied in"));
+  const card = el("div", { className: "stat stat-quiet" });
+  card.append(el("span", { className: "logo quiet", ariaHidden: "true" }, "!"), body);
+  stats.replaceChildren(card);
 }
 
-function renderStats() {
-  const stats = $("stats");
-  stats.replaceChildren();
-  for (const src of Object.keys(SOURCES)) {
-    const rows = chats.filter((c) => c.source === src);
-    if (!rows.length) continue;
-    const msgs = rows.reduce((a, c) => a + c.messages, 0);
-    const mine = rows.reduce((a, c) => a + c.mine, 0);
-    const sessions = rows.reduce((a, c) => a + c.sessions, 0);
-    stats.append(statCard(logo(src), n(msgs),
-      `${SOURCES[src].name} messages, ${n(mine)} of them yours. ${plural(rows.length, "chat")}, ${plural(sessions, "session")}.`));
-  }
-  const quiet = chats.filter((c) => c.mine === 0).length;
-  stats.append(statCard(el("span", { className: "logo quiet" }, "!"), n(quiet),
-    "chats you never replied in, like codes and alerts. Probably not worth training on.", "stat-quiet"));
-}
 
 function renderList() {
   const q = $("chat-filter").value.trim().toLowerCase();
@@ -107,7 +104,7 @@ function renderList() {
   list.replaceChildren();
   for (const c of rows) {
     const b = el("button", { type: "button", className: "chat-row" });
-    if (current && current.row.source === c.source && current.row.chat_id === c.chat_id) b.classList.add("is-current");
+    b.dataset.key = key(c);
     const text = el("span", { className: "chat-text" });
     const top = el("span", { className: "chat-row-top" });
     top.append(el("span", { className: "chat-name" }, chatLabel(c)));
@@ -121,6 +118,28 @@ function renderList() {
     li.append(b);
     list.append(li);
   }
+  markCurrent();
+}
+
+const key = (c) => `${c.source}:${c.chat_id}`;
+
+// Highlight the open chat in place. Rebuilding the list here would destroy the row the user just
+// clicked, and with it their keyboard focus.
+function markCurrent() {
+  const open = current && key(current.row);
+  for (const b of $("chat-list").children) {
+    const row = b.firstChild;
+    const on = row.dataset.key === open;
+    row.classList.toggle("is-current", on);
+    if (on) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  }
+}
+
+// The viewer isn't a live region (a screen reader would read out the whole chat), so say what
+// changed here in a sentence instead.
+function announce(text) {
+  $("status").textContent = text;
 }
 
 // ---- chat viewer ----
@@ -133,54 +152,102 @@ function scrollPaneTo(node) {
   viewer.scrollTop = node.offsetTop - (head ? head.offsetHeight : 0) - 8;
 }
 
+// Sessions [start, end) of a chat (0 = oldest). With no range the server sends the newest PAGE.
+// A chat is never fetched whole: long ones run to thousands of sessions.
+function fetchWindow(row, start, end) {
+  const range = start === undefined ? "" : `?start=${start}&end=${end}`;
+  return getJSON(`/api/data/${row.source}/${row.chat_id}${range}`);
+}
+
 async function openChat(row, focusSession) {
+  const seq = ++viewSeq;
   const viewer = $("viewer");
+  // Opened from a search hit: that hit is about to be replaced, which would drop focus to the page.
+  const fromSearch = viewer.contains(document.activeElement);
   viewer.replaceChildren(el("p", { className: "muted viewer-hint" }, "Loading…"));
+  // From a search hit, a window starting just before the hit, however old it is; otherwise the newest sessions.
+  const start = focusSession === undefined ? undefined : Math.max(0, focusSession - 2);
   let data;
   try {
-    data = await getJSON(`/api/data/${row.source}/${row.chat_id}`);
+    data = await fetchWindow(row, start, start === undefined ? undefined : start + PAGE);
   } catch (err) {
-    viewer.replaceChildren(el("p", { className: "error viewer-hint" }, err.message));
+    if (seq === viewSeq) viewer.replaceChildren(el("p", { className: "error viewer-hint" }, err.message));
     return;
   }
-  const total = data.sessions.length;
-  let from = Math.max(0, total - PAGE);
-  if (focusSession !== undefined) from = Math.min(from, focusSession);
-  current = { row, data, from };
-  renderList();
+  if (seq !== viewSeq) return; // something newer was opened while this loaded
+  current = { row, total: data.total, from: data.start, to: data.end, sessions: data.sessions };
+  markCurrent();
   renderChat();
-  const target = focusSession !== undefined ? $(`s-${focusSession}`) : viewer.lastElementChild;
-  if (focusSession !== undefined) scrollPaneTo(target);
-  else viewer.scrollTop = viewer.scrollHeight;
-  if (focusSession !== undefined && target) target.classList.add("flash");
+  announce(`Opened ${chatLabel(row)}, ${plural(row.messages, "message")}`);
+  if (fromSearch) viewer.querySelector("h2").focus({ preventScroll: true });
+  if (focusSession === undefined) {
+    viewer.scrollTop = viewer.scrollHeight;
+    return;
+  }
+  const target = $(`s-${focusSession}`);
+  scrollPaneTo(target);
+  if (target) target.classList.add("flash");
+}
+
+// Show earlier/later: fetch the next PAGE sessions in that direction and add them to what's on screen.
+async function loadMore(which, btn) {
+  const seq = ++viewSeq;
+  const { row, from, to } = current;
+  const [start, end] = which === "earlier" ? [Math.max(0, from - PAGE), from] : [to, to + PAGE];
+  btn.disabled = true;
+  btn.textContent = "Loading…";
+  let data;
+  try {
+    data = await fetchWindow(row, start, end);
+  } catch (err) {
+    if (seq === viewSeq) {
+      btn.disabled = false;
+      btn.textContent = `${err.message} Try again.`;
+    }
+    return;
+  }
+  if (seq !== viewSeq) return; // another chat or search took over the pane meanwhile
+  current.total = data.total;
+  if (which === "earlier") {
+    current.sessions = data.sessions.concat(current.sessions);
+    current.from = data.start;
+  } else {
+    current.sessions = current.sessions.concat(data.sessions);
+    current.to = data.end;
+  }
+  const viewer = $("viewer");
+  const top = viewer.scrollTop;
+  renderChat();
+  viewer.scrollTop = top;
+  if (which === "earlier") scrollPaneTo($(`s-${from}`)); // keep the session that was first in view
+  // The clicked button was replaced: focus its replacement, or the heading if there's no more to load.
+  (viewer.querySelector(`.more-${which}`) || viewer.querySelector("h2")).focus({ preventScroll: true });
+}
+
+function moreButton(which, hidden) {
+  const label = which === "earlier" ? "Show earlier messages" : "Show later messages";
+  const btn = el("button", { type: "button", className: `btn more more-${which}` }, `${label} (${plural(hidden, "session")} hidden)`);
+  btn.addEventListener("click", () => loadMore(which, btn));
+  return btn;
 }
 
 function renderChat() {
-  const { row, data, from } = current;
+  const { row, total, from, to, sessions } = current;
   const viewer = $("viewer");
   viewer.replaceChildren();
 
   const head = el("div", { className: "viewer-head" });
   const info = el("div");
-  info.append(el("h2", {}, chatLabel(row)));
+  info.append(el("h2", { tabIndex: -1 }, chatLabel(row)));
   info.append(el("p", { className: "muted" },
     `${SOURCES[row.source].name} · ${plural(row.messages, "message")}, ${n(row.mine)} from you · since ${fmtDate(row.first)}`));
   head.append(logo(row.source), info);
   viewer.append(head);
 
-  if (from > 0) {
-    const more = el("button", { type: "button", className: "btn more" }, `Show earlier messages (${plural(from, "session")} hidden)`);
-    more.addEventListener("click", () => {
-      current.from = Math.max(0, from - PAGE);
-      renderChat();
-      scrollPaneTo($(`s-${from}`));
-    });
-    viewer.append(more);
-  }
+  if (from > 0) viewer.append(moreButton("earlier", from));
 
-  data.sessions.slice(from).forEach((s, k) => {
-    const i = from + k;
-    const sec = el("section", { className: "session", id: `s-${i}` });
+  for (const s of sessions) {
+    const sec = el("section", { className: "session", id: `s-${s.seq}` });
     const sameDay = fmtDate(s.start) === fmtDate(s.end);
     const head = el("div", { className: "session-head" });
     const day = (t) => { const w = when(t); return /\d:\d\d/.test(w) ? "Today" : w; };
@@ -197,28 +264,34 @@ function renderChat() {
       sec.append(wrap);
     }
     viewer.append(sec);
-  });
+  }
+
+  if (to < total) viewer.append(moreButton("later", total - to));
 }
 
 // ---- search ----
 
 async function runSearch(q) {
+  const seq = ++viewSeq;
   const viewer = $("viewer");
   current = null;
-  renderList();
+  markCurrent();
   viewer.replaceChildren(el("p", { className: "muted viewer-hint" }, "Searching…"));
   let hits;
   try {
     ({ hits } = await getJSON(`/api/data/search?q=${encodeURIComponent(q)}`));
   } catch (err) {
-    viewer.replaceChildren(el("p", { className: "error viewer-hint" }, err.message));
+    if (seq === viewSeq) viewer.replaceChildren(el("p", { className: "error viewer-hint" }, err.message));
     return;
   }
+  if (seq !== viewSeq) return; // something newer was opened while this loaded
   viewer.replaceChildren();
   const head = el("div", { className: "viewer-head" });
   const info = el("div");
   info.append(el("h2", {}, `“${q}”`));
-  info.append(el("p", { className: "muted" }, hits.length >= 200 ? "The 200 newest matches" : plural(hits.length, "match").replace("matchs", "matches")));
+  const found = hits.length >= 200 ? "The 200 newest matches" : plural(hits.length, "match").replace("matchs", "matches");
+  info.append(el("p", { className: "muted" }, found));
+  announce(`${found} for ${q}`);
   head.append(info);
   viewer.append(head);
   if (!hits.length) {
