@@ -1,12 +1,12 @@
-import json
 import sqlite3
 import sys
 from itertools import groupby
 from pathlib import Path
 from typing import Optional
 
+import store
+
 DB_PATH = Path.home() / "Library/Messages/chat.db"
-OUT_PATH = Path(__file__).parent / "data/sessions.jsonl"
 
 # Apple epoch (2001-01-01) to Unix epoch offset, in seconds.
 APPLE_EPOCH_OFFSET = 978307200
@@ -38,7 +38,7 @@ ORDER BY c.ROWID, m.date
 
 def fetch_messages(db_path: Path = DB_PATH, chat: Optional[str] = None):
     """Yield every real message, grouped by chat and ordered by time. `chat` limits to one chat_identifier."""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = store.open_readonly(db_path)
     conn.row_factory = sqlite3.Row
     try:
         yield from conn.execute(QUERY, {"epoch": APPLE_EPOCH_OFFSET, "chat": chat})
@@ -102,27 +102,21 @@ def sessions(rows, gap=SESSION_GAP_SECONDS):
         yield current
 
 
-def write_sessions(out_path: Path = OUT_PATH, db_path: Path = DB_PATH, chat: Optional[str] = None):
-    """Stream every chat (or just `chat`) through clean + sessions and write one JSON object per session."""
-    n_chats = n_sessions = n_msgs = 0
-    out_path.parent.mkdir(exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as f:
+def write_sessions(db_path: Path = DB_PATH, chat: Optional[str] = None):
+    """Extract every chat (or just `chat`) into the local store (store.py). Returns (chats, sessions, messages)."""
+    def records():
         for chat_id, rows in chats(fetch_messages(db_path, chat)):
-            n_chats += 1
             header = {
                 "chat_id": chat_id,
                 "chat": rows[0]["chat_identifier"],
                 "group": rows[0]["chat_style"] == 43,
             }
-            for msgs in sessions(clean(rows)):
-                record = {**header, "start": msgs[0]["t"], "end": msgs[-1]["t"], "messages": msgs}
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                n_sessions += 1
-                n_msgs += len(msgs)
-    return n_chats, n_sessions, n_msgs
+            yield header, list(sessions(clean(rows)))
+
+    return store.save("messages", records(), whole_source=chat is None, db_path=db_path)
 
 
 if __name__ == "__main__":
     chat = sys.argv[1] if len(sys.argv) > 1 else None   # e.g. +14155550123 or an iMessage email
     n_chats, n_sessions, n_msgs = write_sessions(chat=chat)
-    print(f"{n_msgs} messages in {n_sessions} sessions across {n_chats} chats -> {OUT_PATH}")
+    print(f"{n_msgs} messages in {n_sessions} sessions across {n_chats} chats -> {store.path('messages')}")
